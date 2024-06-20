@@ -62,15 +62,15 @@ parser.add_argument("-c:v", "--codec_video", type=str, default="h264", metavar="
 parser.add_argument("-c:a", "--codec_audio", type=str, default="aac", metavar="AUDIO_CODEC",
                     help="Target audio codec. (default: aac). Ex: aac, libopus, mp3, vorbis")
 parser.add_argument("-o:s", "--output_softsubs", default=None, type=Path,
-                    help="Path to the folder or output file for the video files with embedded softsub (embedded in the mp4 container and .ass files). (default: softsubs_ + input_path)")
+                    help="Path to the folder or output file for the video files with embedded softsub (embedded in the mp4 container and .srt files). (default: softsubs_ + input_path)")
 parser.add_argument("-o:h", "--output_hardsubs", default=None, type=Path,
                     help="Output folder path for video files with burned-in captions and embedded in the mp4 container. (default: hardsubs_ + input_path)")
 parser.add_argument("--overwrite", default=False, action="store_true",
                     help="Overwrite existing files in output directories")
-parser.add_argument("--disable_ass", default=False, action="store_true",
-                    help="Disable .ass file generation and don't insert subtitles in mp4 container of output_softsubs")
+parser.add_argument("--disable_srt", default=False, action="store_true",
+                    help="Disable .srt file generation and don't insert subtitles in mp4 container of output_softsubs")
 parser.add_argument("--disable_softsubs", default=False, action="store_true",
-                    help="Don't insert subtitles in mp4 container of output_softsubs. This option continues generating .ass files")
+                    help="Don't insert subtitles in mp4 container of output_softsubs. This option continues generating .srt files")
 parser.add_argument("--disable_hardsubs", default=False, action="store_true",
                     help="Disable subtitle burn in output_hardsubs")
 parser.add_argument("--copy_files", default=False, action="store_true",
@@ -78,7 +78,7 @@ parser.add_argument("--copy_files", default=False, action="store_true",
 args = parser.parse_args()
 
 if not args.output_softsubs and not args.input_path.is_file():
-    args.output_softsubs = compatibility_path if (compatibility_path := Path(args.input_path.parent, "legen_ass_" + args.input_path.name)).exists() else Path(args.input_path.parent, "softsubs_" + args.input_path.name)
+    args.output_softsubs = compatibility_path if (compatibility_path := Path(args.input_path.parent, "legen_srt_" + args.input_path.name)).exists() else Path(args.input_path.parent, "softsubs_" + args.input_path.name)
 if not args.output_hardsubs and not args.input_path.is_file():
     args.output_hardsubs = compatibility_path if (compatibility_path := Path(args.input_path.parent, "legen_burned_" + args.input_path.name)).exists() else Path(args.input_path.parent, "hardsubs_" + args.input_path.name)
 
@@ -171,62 +171,62 @@ with time_task(message="⌛ Processing files for"):
                     # set path after get transcribed language
                     subtitle_transcribed_path = Path(
                         softsub_video_dir, rel_path.stem + posfix_extension + f"_{audio_language}.ass")
-                    # create temp file for .ass
-                    transcribed_ass_temp = file_utils.TempFile(
+                    # create temp file for .srt
+                    transcribed_srt_temp = file_utils.TempFile(
                         subtitle_transcribed_path, file_ext=".ass")
-                    # skip transcription if transcribed ass for this language is existing (without overwrite neabled) or will not be used in LeGen process
-                    if (file_utils.file_is_valid(subtitle_transcribed_path)) or ((args.disable_hardsubs or file_utils.file_is_valid(hardsub_video_path)) and (args.disable_ass or file_utils.file_is_valid(subtitle_transcribed_path))) and not args.overwrite:
+                    # skip transcription if transcribed srt for this language is existing (without overwrite neabled) or will not be used in LeGen process
+                    if (file_utils.file_is_valid(subtitle_transcribed_path)) or ((args.disable_hardsubs or file_utils.file_is_valid(hardsub_video_path)) and (args.disable_srt or file_utils.file_is_valid(subtitle_transcribed_path))) and not args.overwrite:
                         print("Transcription is unnecessary. Skipping.")
                     else:
                         # extract audio
                         audio_extracted = file_utils.TempFile(None, file_ext=".wav")
                         ffmpeg_utils.extract_audio_wav(
                             origin_media_path, audio_extracted.getpath())
-                        # transcribe saving subtitles to temp .ass file
+                        # transcribe saving subtitles to temp .srt file
                         if args.transcription_engine == 'whisperx':
                             print(f"{wblue}Transcribing{default} with {gray}WhisperX{default}")
                             whisperx_utils.transcribe_audio(
-                                whisper_model, audio_extracted.getpath(), transcribed_ass_temp.getpath(), audio_language, device=torch_device, batch_size=args.transcription_batch)
+                                whisper_model, audio_extracted.getpath(), transcribed_srt_temp.getpath(), audio_language, device=torch_device, batch_size=args.transcription_batch)
                         if args.transcription_engine == 'whisper':
                             print(f"{wblue}Transcribing{default} with {gray}Whisper{default}")
                             whisper_utils.transcribe_audio(
-                                model=whisper_model, audio_path=audio_extracted.getpath(), ass_path=transcribed_ass_temp.getpath(), lang=audio_language, disable_fp16=False if transcription_compute_type == "float16" or transcription_compute_type == "fp16" else True)
+                                model=whisper_model, audio_path=audio_extracted.getpath(), srt_path=transcribed_srt_temp.getpath(), lang=audio_language, disable_fp16=False if transcription_compute_type == "float16" or transcription_compute_type == "fp16" else True)
 
                         audio_extracted.destroy()
-                        # if save .ass is enabled, save it to destination dir, also update path with language code
-                        if not args.disable_ass:
-                            transcribed_ass_temp.save()
-                    subtitles_path.append(transcribed_ass_temp.getvalidpath())
+                        # if save .srt is enabled, save it to destination dir, also update path with language code
+                        if not args.disable_srt:
+                            transcribed_srt_temp.save()
+                    subtitles_path.append(transcribed_srt_temp.getvalidpath())
                     # translate transcribed subtitle using Google Translate if transcribed language is not equals to target
                     # skip translation if translation has not requested, has equal source and output language, if file is existing (without overwrite neabled) or will not be used in LeGen process
                     if args.translate == "none":
                         pass # translation not requested
                     elif args.translate == audio_language:
                         print("Translation is unnecessary because input and output language are the same. Skipping.")
-                    elif (args.disable_hardsubs or file_utils.file_is_valid(hardsub_video_path)) and (args.disable_ass or (file_utils.file_is_valid(subtitle_translated_path) and file_utils.file_is_valid(subtitle_transcribed_path) and file_utils.file_is_valid(subtitle_translated_path))) and not args.overwrite:
+                    elif (args.disable_hardsubs or file_utils.file_is_valid(hardsub_video_path)) and (args.disable_srt or (file_utils.file_is_valid(subtitle_translated_path) and file_utils.file_is_valid(subtitle_transcribed_path) and file_utils.file_is_valid(subtitle_translated_path))) and not args.overwrite:
                         print("Translation is unnecessary. Skipping.")
                         subtitles_path.insert(0, subtitle_translated_path)
                     elif file_utils.file_is_valid(subtitle_translated_path):
                         print("Translated file found. Skipping translation.")
                         subtitles_path.insert(0, subtitle_translated_path)
-                    elif transcribed_ass_temp.getvalidpath():
-                        # create the temp .ass translated file
-                        translated_ass_temp = file_utils.TempFile(
-                            subtitle_translated_path, file_ext=".ass")
+                    elif transcribed_srt_temp.getvalidpath():
+                        # create the temp .srt translated file
+                        translated_srt_temp = file_utils.TempFile(
+                            subtitle_translated_path, file_ext=".srt")
 
                         # translating with google translate public API
                         print(f"{wblue}Translating{default} with {gray}Google Translate{default}")
-                        subs = translate_utils.translate_ass_file(
-                            transcribed_ass_temp.getvalidpath(), translated_ass_temp.getpath(), args.translate)
-                        if not args.disable_ass:
-                            translated_ass_temp.save()
+                        subs = translate_utils.translate_srt_file(
+                            transcribed_srt_temp.getvalidpath(), translated_srt_temp.getpath(), args.translate)
+                        if not args.disable_srt:
+                            translated_srt_temp.save()
 
-                        subtitles_path.insert(0, translated_ass_temp.getvalidpath())
+                        subtitles_path.insert(0, translated_srt_temp.getvalidpath())
                     if not args.disable_softsubs:
                         if file_utils.file_is_valid(softsub_video_path) and not args.overwrite:
                             print(f"Existing video file {gray}{softsub_video_path}{default}. Skipping subtitle insert")
                         else:
-                            # create the temp .mp4 with ass in video container
+                            # create the temp .mp4 with srt in video container
                             video_softsubs_temp = file_utils.TempFile(
                                 softsub_video_path, file_ext=".mp4")
 
@@ -240,7 +240,7 @@ with time_task(message="⌛ Processing files for"):
                         if file_utils.file_is_valid(hardsub_video_path) and not args.overwrite:
                             print(f"Existing video file {gray}{hardsub_video_path}{default}. Skipping subtitle burn")
                         else:
-                            # create the temp .mp4 with ass in video container
+                            # create the temp .mp4 with srt in video container
                             video_hardsubs_temp = file_utils.TempFile(
                                 hardsub_video_path, file_ext=".mp4")
                             # insert subtitle into container and burn using ffmpeg
@@ -252,8 +252,8 @@ with time_task(message="⌛ Processing files for"):
                 else:
                     print("not a video file")
                     if args.copy_files:
-                        if not args.disable_ass:
-                            # copia o arquivo extra para pasta que contém também os arquivos ass
+                        if not args.disable_srt:
+                            # copia o arquivo extra para pasta que contém também os arquivos srt
                             file_utils.copy_file_if_different(path, Path(
                                 args.output_softsubs, rel_path))
                         if not args.disable_hardsubs:
